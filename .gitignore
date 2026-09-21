@@ -1,0 +1,15 @@
+# Never commit real push state or secrets
+.env
+.env.*
+*.pem
+*.key
+vapid*.json
+*subscription*.json
+push-state*.json
+
+# Local/dev
+.DS_Store
+Thumbs.db
+node_modules/
+__pycache__/
+*.pyc
