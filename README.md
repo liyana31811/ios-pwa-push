@@ -633,8 +633,10 @@ Push payload
 
 > **② iOS 杀后台不是靠“保活”解决，而是靠 Web Push + durable target URL + cold resume + re-fetch。**
 
-详细的真实踩坑记录见 [FIELD-NOTES.md](FIELD-NOTES.md)。  
-安全边界见 [SECURITY.md](SECURITY.md)。  
+详细的真实踩坑记录见 [FIELD-NOTES.md](FIELD-NOTES.md)。
+
+安全边界见 [SECURITY.md](SECURITY.md)。
+
 后台 / 冷恢复专项见 [BACKGROUND-RESUME.md](BACKGROUND-RESUME.md)。
 
 ---
