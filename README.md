@@ -1,10 +1,79 @@
 # iOS PWA Push
 
-**让你已经保存到 iPhone 桌面的自建 Web App，直接拥有原生系统通知。**
+**给已经保存到 iPhone 主屏幕的自建 Web App 加上原生系统通知，并让用户点通知以后直接回到对应的聊天 / 任务 / 房间。**
 
-这不是一个“让网页响一下”的教程。
+> 重点不是“让网页响一下”，而是把 **通知 → 回到自己的 PWA → 恢复正确现场** 这一整条做完整。
 
-它真正解决的是下面这条完整链路：
+[English README](README.en.md)
+
+---
+
+# 30 秒看懂：这个仓库解决 3 件事
+
+### ✅ 1. 让自建 PWA 自己拥有 iPhone 原生通知
+
+不需要 App Store 原生 App，也不一定需要 Bark。
+
+你的 Web 前端加到 iPhone 主屏幕后，可以像 App 一样出现在锁屏和通知中心。
+
+### ✅ 2. 点通知不是“打开首页”，而是直接回到对应现场
+
+例如：
+
+~~~text
+/chat?conversation_id=abc
+/tasks/42
+/rooms/construction
+~~~
+
+点通知以后，已有 PWA 窗口就 navigate + focus；没有窗口就 cold open。
+
+页面起来后，再重新读取服务器最新状态。
+
+### ✅ 3. 不靠后台保活，iOS suspend / kill 以后也按“冷恢复”设计
+
+我们不把 WebSocket、Timer、页面 JavaScript 当后台通知基础。
+
+页面死了没关系：
+
+~~~text
+Web Push 到达
+  → 系统 / 浏览器处理通知
+  → 用户点击
+  → PWA 冷启动或恢复
+  → 根据 target URL 找回现场
+  → re-fetch server truth
+~~~
+
+这也是后面整个架构最重要的设计原则。
+
+---
+
+# Bark 和 PWA Web Push 怎么选
+
+乍看两种都能“给 iPhone 发通知”，但它们擅长的事情不一样。
+
+| 你最关心的事 | Bark | PWA Web Push |
+|---|---|---|
+| 只想“跑完叫我一声” | ✅ **最省事** | ⚠️ 能做，但偏重 |
+| 不想改现有前端 | ✅ **基本不用动** | ❌ 需要接前端 + 后端 |
+| 已经有自己的桌面 PWA | ⚠️ 能用，但还是外置通知器 | ✅ **更自然** |
+| 点通知直接回对应 chat / task / room | ⚠️ 靠外部 URL 跳转 | ✅ **应用自己的恢复路径** |
+| 通知属于自己的 Web App | ❌ 否 | ✅ **是** |
+| iOS suspend / kill 后恢复现场 | ⚠️ 与 PWA 生命周期分离 | ✅ **按 cold resume 设计** |
+| App 正在看目标时自动不打扰 | ⚠️ 需要额外协调 | ✅ **应用自己判断最自然** |
+| 想把 Web 前端真正当“App”用 | ⚠️ 更像外挂通知 | ✅ **更完整** |
+
+**一句话判断：**
+
+- 只是需要“任务完成手机响一下” → **Bark 更省事。**
+- 已经有桌面 PWA，而且希望“通知属于自己的 App、点开回正确现场、杀后台后还能恢复” → **PWA Web Push 更合适。**
+
+> **Bark 可以把你带到一个 URL；PWA Web Push 可以让通知属于你自己的 Web App，并由它负责恢复现场。**
+
+---
+
+# 完整链路长什么样
 
 ~~~text
 你的自建前端
@@ -20,45 +89,9 @@
 
 如果你已经会自己搭 Web 前端，这个仓库主要帮你把 **iOS PWA Push 的架构、恢复逻辑，以及真正容易踩的坑一次讲清楚**。
 
-[English README](README.en.md)
-
 ---
 
-# 这个仓库解决什么问题
-
-现在不少人会把自建 Claude / Codex / Agent / Chat UI 之类的网页：
-
-> Safari 打开 → 添加到主屏幕 → 当成一个 App 用。
-
-接下来就会遇到一个很现实的问题：
-
-> **页面不在前台时，怎么让 iPhone 原生通知我？**
-
-最常见的办法是 Bark。
-
-Bark 很适合：
-
-> “任务跑完，手机响一下。”
-
-但如果你的 Web 前端本身已经是一个保存到桌面的 PWA，标准 Web Push 可以把通知能力直接交给这个 Web App 自己。
-
-差别不只是“少装一个 Bark”。
-
-真正重要的是：
-
-> **Bark 可以把你带到一个 URL；PWA Web Push 可以让通知属于你自己的 Web App，并由它负责恢复现场。**
-
-也就是说，点通知以后可以做到：
-
-- 已经有 PWA 窗口 → 直接 navigate + focus；
-- App 不在运行 → 冷启动到目标页面；
-- 通知里带 conversation_id / task_id / room_id；
-- 打开后重新读取服务器当前状态；
-- 用户本来就在看这个页面 → 不重复轰一条系统通知。
-
----
-
-# 最重要的一点：不要和 iOS“杀后台”硬刚
+# 为什么不怕 iOS“杀后台”
 
 很多人担心：
 
@@ -105,13 +138,13 @@ Bark 很适合：
 
 ---
 
-# 杀后台以后，怎么把现场恢复回来
+## 杀后台以后，怎么把现场恢复回来
 
 单纯 showNotification() 远远不够。
 
 真正可靠的恢复路径至少有下面几层。
 
-## 1. 通知里必须带“可持久恢复”的目标 URL
+### 1. 通知里必须带“可持久恢复”的目标 URL
 
 例如：
 
@@ -139,7 +172,7 @@ Bark 很适合：
 
 ---
 
-## 2. 点通知时先找已有 PWA 窗口
+### 2. 点通知时先找已有 PWA 窗口
 
 Service Worker 的 notificationclick：
 
@@ -156,7 +189,7 @@ Service Worker 的 notificationclick：
 
 ---
 
-## 3. 不要把 postMessage 当唯一恢复手段
+### 3. 不要把 postMessage 当唯一恢复手段
 
 Service Worker 可以给页面发：
 
@@ -176,7 +209,7 @@ notification_click
 
 ---
 
-## 4. 回来以后重新读服务器真相
+### 4. 回来以后重新读服务器真相
 
 Push payload 只负责：
 
@@ -200,7 +233,7 @@ Push payload 只负责：
 
 ---
 
-## 5. 防止“后台旧请求”回来覆盖新状态
+### 5. 防止“后台旧请求”回来覆盖新状态
 
 这个是实战里真的踩过的坑。
 
@@ -242,7 +275,7 @@ resume
 
 ---
 
-## 6. WebSocket 只负责前台实时同步
+### 6. WebSocket 只负责前台实时同步
 
 不要把 WebSocket 当后台通知通道。
 
@@ -260,61 +293,6 @@ App 回来以后重新建 WebSocket / long-poll 即可。
 - pageshow
 - visibilitychange
 - online
-
----
-
-# 2026 年再加一层：Declarative Web Push
-
-iOS / iPadOS 18.4+ 的 WebKit 已经支持 **Declarative Web Push**。
-
-它特别适合这个场景。
-
-以前的 Original Web Push 更依赖：
-
-~~~text
-Push
-  → 启动 Service Worker JavaScript
-  → JS 调 showNotification()
-~~~
-
-Declarative Web Push 则可以把“要显示什么通知、点了去哪里”直接写进标准 payload。
-
-现代 WebKit 可以直接处理：
-
-~~~text
-Push payload
-  → 系统理解 notification
-  → 直接显示
-  → 点击按 navigate URL 打开
-~~~
-
-这意味着即使：
-
-- Service Worker 暂时拉不起来；
-- Service Worker 被 privacy cleanup 清掉；
-- 设备资源压力比较大；
-
-声明式通知仍可以作为 fallback。
-
-所以新项目推荐：
-
-> **已验证的冷恢复架构 + Declarative Web Push 渐进增强。**
-
-不是把 Service Worker 全删掉。
-
-更实用的方式是：
-
-~~~text
-同一份兼容 payload
-  → 新 WebKit：直接 declarative 处理
-  → 老浏览器：Service Worker 读取同一 JSON 后 showNotification()
-~~~
-
-通常不需要为“新 / 旧浏览器”维护两套订阅表。
-
-详细说明见：
-
-[BACKGROUND-RESUME.md](BACKGROUND-RESUME.md)
 
 ---
 
@@ -575,190 +553,89 @@ WebSocket / long-poll 恢复后重建
 
 ---
 
-# 我们实际踩过、建议一开始就避开的坑
+# 进阶：iOS 18.4+ 的 Declarative Web Push
 
-## 坑 1：只在 Safari 测，不从桌面 PWA 测
+iOS / iPadOS 18.4+ 的 WebKit 已经支持 **Declarative Web Push**。
 
-iPhone 的目标场景是：
+它特别适合这个场景。
 
-> **Add to Home Screen 后的 Web App。**
-
-不要只看普通 Safari 标签页。
-
----
-
-## 坑 2：页面加载时自动弹通知权限
-
-iOS 很容易直接不给。
-
-必须放到用户点击动作里。
-
----
-
-## 坑 3：通知能响，但只能回首页
-
-说明 Push 通了，**业务恢复没做完**。
-
-Target 应该直接包含：
+以前的 Original Web Push 更依赖：
 
 ~~~text
-conversation_id
-task_id
-room_id
+Push
+  → 启动 Service Worker JavaScript
+  → JS 调 showNotification()
 ~~~
 
----
+Declarative Web Push 则可以把“要显示什么通知、点了去哪里”直接写进标准 payload。
 
-## 坑 4：点通知回来，页面还是旧内容
-
-这不是 Push 失败。
-
-这是 resume / cache / race condition 问题。
-
-我们实际处理过：
-
-- 强制重新 fetch；
-- cache bust；
-- request sequence；
-- duplicate click suppression；
-- 旧 async response 不允许覆盖新状态。
-
----
-
-## 坑 5：试图用 WebSocket 保后台
-
-别这么设计。
+现代 WebKit 可以直接处理：
 
 ~~~text
-WebSocket = 前台实时同步
-Web Push  = 页面不活着时叫用户
-HTTP fetch = 恢复后重新取真相
+Push payload
+  → 系统理解 notification
+  → 直接显示
+  → 点击按 navigate URL 打开
 ~~~
 
-三条路分工不同。
+这意味着即使：
+
+- Service Worker 暂时拉不起来；
+- Service Worker 被 privacy cleanup 清掉；
+- 设备资源压力比较大；
+
+声明式通知仍可以作为 fallback。
+
+所以新项目推荐：
+
+> **已验证的冷恢复架构 + Declarative Web Push 渐进增强。**
+
+不是把 Service Worker 全删掉。
+
+更实用的方式是：
+
+~~~text
+同一份兼容 payload
+  → 新 WebKit：直接 declarative 处理
+  → 老浏览器：Service Worker 读取同一 JSON 后 showNotification()
+~~~
+
+通常不需要为“新 / 旧浏览器”维护两套订阅表。
+
+详细说明见：
+
+[BACKGROUND-RESUME.md](BACKGROUND-RESUME.md)
 
 ---
 
-## 坑 6：用户正在看聊天，还照样通知
-
-体验会很烦。
-
-一个实跑方案是：
-
-~~~text
-手机 / PWA
-+ 当前页面 visible
-+ 正在看同一个 context
-+ heartbeat 足够新
-→ suppress push
-~~~
-
-我们实际用过大约 **45 秒** 的 freshness window。
-
-这不是标准答案，只是一个已经跑过的参考尺度。
-
-桌面浏览器在线，不应该默认把手机 Push 也抑制掉。
-
 ---
 
-## 坑 7：Subscription 死了还一直发
+# 最容易踩的坑：先看这张表
 
-Push Service 返回：
+这些不是理论边界，很多都是实跑时真的踩过的。
 
-~~~text
-404
-410
-~~~
-
-就应该删除死 Subscription。
-
----
-
-## 坑 8：遇到 5xx 就无限 retry
-
-不要。
-
-可以对：
-
-~~~text
-408
-425
-429
-5xx
-部分网络错误
-~~~
-
-做有限 retry。
-
-但必须有上限。
-
-而且 Push 不是 exactly-once。
-
-第一次请求可能其实已经送到 Push Service，只是发送方没收到确认。
-
-所以：
-
-~~~text
-eventId = 业务事件身份
-tag     = 通知替换 / 分组
-attempt = 某次发送尝试
-~~~
-
-这三个概念要分开。
-
----
-
-## 坑 9：通知里的 URL 可以随便跳外站
-
-Target 必须限制：
-
-~~~text
-same-origin
-in-scope
-~~~
-
-不要让 Push payload 变成任意跳转入口。
-
----
-
-## 坑 10：把 Push 成功当成业务成功
-
-绝对不要。
-
-~~~text
-Push sent
-≠
-Task completed
-
-Push failed
-≠
-Task failed
-~~~
-
-Push 只是通知运输层。
-
-真实业务状态永远在自己的服务器。
-
----
-
-# Bark 和 PWA Web Push 怎么选
-
-| 场景 | Bark | PWA Web Push |
+| 症状 | 判断 | 建议 |
 |---|---|---|
-| 只想“跑完叫我一声” | 很适合 | 有点重 |
-| 不想改前端 | 很适合 | 需要改 |
-| 已经有自己的桌面 PWA | 能用 | 更自然 |
-| 通知属于自己的 Web App | 否 | 是 |
-| 点通知后恢复原来的 App 生命周期 | 间接 | 是 |
-| 直接进入对应 chat/task/room | 可以靠 URL | 原生设计的一部分 |
-| App 正在看目标时自动抑制 | 需要自己绕一层 | 很适合 |
-| 冷启动 / 杀后台恢复 | 外部跳转 | 可以完整设计 |
+| 只在 Safari 标签页测 | ❌ 场景不对 | **一定从 Add to Home Screen 后的 PWA 真机测** |
+| 页面一加载就申请通知权限 | ❌ iOS 容易不给 | **必须绑用户明确点击** |
+| 通知能响，但点开只能回首页 | ⚠️ Push 通了，恢复没做完 | target 带 **conversation_id / task_id / room_id** |
+| 点通知回来还是旧内容 | ⚠️ resume / cache / race 问题 | re-fetch + cache bust + request generation |
+| 想靠 WebSocket 保后台 | ❌ 方向不对 | **WebSocket 前台同步，Web Push 后台叫人，HTTP 恢复真相** |
+| 用户正在看当前聊天，还照样弹通知 | ⚠️ 体验问题 | 用短时 mobile/PWA visibility heartbeat 做前台抑制 |
+| Subscription 已失效还一直发 | ❌ 会堆垃圾 | 404 / 410 直接清理 |
+| 5xx / timeout 无限 retry | ❌ 可能重复通知 | 只做**有上限**的 transient retry |
+| Push target 可以随便跳 URL | ❌ 安全问题 | 强制 **same-origin + in-scope** |
+| 把 Push 成败当业务成败 | ❌ 分层错误 | Push 只是运输层，**服务器业务状态才是真相** |
 
-所以这里不是“Bark 不好”。
+其中两个尤其值得单独记住：
 
-而是：
+> **① 通知能响，不代表产品已经做完。点通知后能不能回到正确现场，才是完整闭环。**
 
-> **如果你的 Web 前端已经是你的 App，那通知最好也变成这个 App 自己的能力。**
+> **② iOS 杀后台不是靠“保活”解决，而是靠 Web Push + durable target URL + cold resume + re-fetch。**
+
+详细的真实踩坑记录见 [FIELD-NOTES.md](FIELD-NOTES.md)。  
+安全边界见 [SECURITY.md](SECURITY.md)。  
+后台 / 冷恢复专项见 [BACKGROUND-RESUME.md](BACKGROUND-RESUME.md)。
 
 ---
 
